@@ -1,0 +1,41 @@
+- name: Web application deployment
+  hosts: webservers
+  tasks:
+    - name: Install docker and required library
+      apt:
+        name:
+          - docker.io
+          - python3-requests
+        state: present
+      become: yes
+
+    - name: Start docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+
+    - name: Clone git repository
+      git:
+        repo: https://github.com/ilmossp/webapp-devops
+        dest: ~/webapp-devops
+
+    - name: Build image
+      community.docker.docker_image:
+        name: webapp-devops
+        build:
+          path: /home/ilyass/webapp-devops
+        source: build
+      become: yes
+
+    - name: Run container
+      community.docker.docker_container:
+        name: webapp-container
+        image: webapp-devops
+        state: started
+        env:
+          DB_CONNECTION_STRING : "sqlite::memory:"
+        ports:
+          - "3000:3000"
+      become: yes
