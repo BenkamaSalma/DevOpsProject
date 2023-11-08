@@ -126,7 +126,79 @@ Check Nat settings by adding Gateway IP and add a host port in order to connect 
 --- 
 
 ## Ansible Setup
+For your control node (the machine that runs Ansible), you can use nearly any UNIX-like machine with Python 3.9 or newer installed. This includes Red Hat, Debian, Ubuntu, macOS, BSDs, and Windows under a Windows Subsystem for Linux (WSL) distribution. Windows without WSL is not natively supported as a control node.
+The managed node (the machine that Ansible is managing) does not require Ansible to be installed but needs Python to run Ansible-generated Python code.
+### Using Ubuntu on Windows 10
+The best alternative is to use Windows Subsystem for Linux, also known as WSL. 
+1. *Install WSL*
 
+WSL can be installed from the command line. Open a PowerShell prompt as an Administrator and run:
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/wslInstall.PNG?raw=true)
+Thanks to Microsoft. Now it is possible to install Ubuntu on Windows 10.
+
+- Search for Windows features in the search box. And when the "Turn Windows features on or off" appears, click on that.
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/features.png?raw=true)
+- Open the Microsoft Store and search for Ubuntu to install the latest version.
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/ubuntuBash.png?raw=true)
+- On Ubuntu bash, it will ask you to set the username and password for the default user.
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/user.PNG?raw=true)
+2. *Install Ansible*
+- Its time to get the Ansible installed with the following commands.
+  - `sudo apt-add-repository ppa:ansible/ansible`
+  - `sudo apt-get update`
+  - `sudo apt-get install ansible`
+
+
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/ansibleRepo.PNG?raw=true)
+Press Y when it asks for…
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/ansible.PNG?raw=true)
+Run this command to verify that ansible is successfully installed
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/ansibleVersion.PNG?raw=true)
+### Using macOS
+1.  *Install Homebrew*
+Homebrew is a popular package manager for macOS that can help you install and manage various software packages. You can use Homebrew to install Ansible on your Mac. Here’s how to install Homebrew:
+- Open the Terminal app
+- Run the following command to install Homebrew:
+   - `/bin/bash -c "$(curl –fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`**
+2.  *Install Ansible*
+- Open the Terminal app and run the following command to install Ansible:
+  - `brew install ansible`
+  
+ - Once the installation is complete, you can verify that Ansible is installed correctly by running the following command in the Terminal app:
+   - `ansible --version`
+
+### *SSH Installation and configuration*
+You can skip this step if you already have ssh installed and configured. The following steps will be performed on both worker nodes.
+- *Step 1:*
+
+  - `sudo apt install ssh`
+
+- *Step 2*: after installing ssh, we enable it (for the ssh to start on system reboot)
+
+  - `sudo systemctl enable --now ssh`
+
+In order to allow for passwordless connection to the worker nodes, we need to generate the master node’s SSH keys and add them to the worker nodes.
+
+<u>ON MASTER NODE:</u>
+- Run this command to create a pair of cryptographic keys, a public key, and a private key:
+
+  - `ssh-keygen`
+
+We have successfully generated the master node’s SSH keys. Your public key has been saved in `/home/ubuntu/.ssh/id_rsa.pub`.
+
+- `cat /home/ubuntu/.ssh/id_rsa.pub`
+
+<u>ON WORKER NODES:</u>
+
+- Copy the SSH keys generated on the master node and save it in the `authorized_keys` file on both worker nodes with this command:
+
+  - `nano /home/node/.ssh/authorized_keys`
+
+Repeat this step for the other worker node. If the `/home/node/.ssh/` folder doesn’t exist on your worker nodes, follow the steps used to generate the SSH keys on the master nodes. The folder should be created afterward. Then you can create the `authorized_keys` file with `nano /home/node/.ssh/authorized_keys`.
+### *Python installation on the worker nodes*
+You can skip this step if you already have Python installed. If not, run this command:
+
+- `sudo apt install python3.9`
 ---
 
 ##  Your First Ansible playbook
@@ -278,6 +350,86 @@ By leveraging these modules, we can automate the entire process, ensuring consis
 
 In the upcoming steps, we'll put these concepts into practice and demonstrate how Ansible modules simplify the deployment of a web application in a Docker container.
 
+```yml
+- name: Web application deployment
+  hosts: webservers
+  tasks:
+    - name: Install docker and required library
+      apt:
+        name:
+          - docker.io
+          - python3-requests
+        state: present
+      become: yes
 
+    - name: Start docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+
+    - name: Clone git repository
+      git:
+        repo: https://github.com/ilmossp/webapp-devops
+        dest: ~/webapp-devops
+
+    - name: Build image
+      community.docker.docker_image:
+        name: webapp-devops
+        build:
+          path: /home/ilyass/webapp-devops
+        source: build
+      become: yes
+
+    - name: Run container
+      community.docker.docker_container:
+        name: webapp-container
+        image: webapp-devops
+        state: started
+        env:
+          DB_CONNECTION_STRING : {your database connection string}
+        ports:
+          - "3000:3000"
+      become: yes
+
+```
+
+The provided playbook automates the deployment of a web application using Docker on target hosts. It's organized into multiple steps. First, it ensures that Docker is installed and the Docker service is started and enabled. Then, it clones the web application source code from a Git repository. Next, it builds a Docker image from the application source. Finally, it runs a Docker container based on the image, exposing port 3000 on the host to port 3000 in the container. This playbook streamlines the process of setting up a web application with Docker, from installation to container deployment.
+
+You can check on the docker container using this command from an ssh  to your host
+
+![enter image description here](https://github.com/BenkamaSalma/DevOpsProject/blob/main/images/docker.png?raw=true)
+
+
+### Variables and Templates
+
+To make the playbook more flexible and dynamic, you can replace hardcoded elements with Ansible variables or templates. This allows you to parameterize values, making it easier to adapt the playbook for different environments or configurations. Here are some key elements we can replace with variables or templates:
+
+1. **Git Repository URL**:
+
+```yaml
+   vars:
+     git_repo_url: https://github.com/ilmossp/webapp-devops
+   ```
+
+2. **Image Name and Source Directory**:
+```yaml
+   vars:
+     docker_image_name: webapp-devops
+     docker_source_directory: ~/webapp-devops
+   ```
+
+3. **Port Mapping**: 
+```yaml
+   vars:
+     host_port: 3000
+     container_port: 3000
+   ```
+
+ Then, use these variables in the a task we use the following syntax.
+ ```yaml
+  port: {{host_port}}
+ ```
 
 
